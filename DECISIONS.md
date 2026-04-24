@@ -15,7 +15,7 @@ We bypassed bloated frameworks to achieve zero abstraction magic and absolute co
 We defended against over-engineering. Setting up a complex SQL database (PostgreSQL/SQLite) or a vector store for small-to-medium Excel files (< 1 million rows) introduces unnecessary schema migrations and I/O bottlenecks. Using Pandas in RAM allows for lightning-fast querying, instantaneous statistical aggregations (`groupby`, `mean`), and robust handling of missing `NaN` values. The write-through pattern ensures zero data loss by immediately flushing any mutation back to the `.xlsx` file on disk while keeping the blazing-fast read speeds intact.
 
 ## 3. Resilient Routing & Right-Sizing
-**Decision:** The system utilizes `openai/gpt-oss-20b` (on Groq) as the primary router model, combined with an exponential backoff/fallback chain defaulting down to various `gemini` models.
+**Decision:** The system utilizes `openai/gpt-oss-20b` (on Groq) as the primary router model, combined with an exponential backoff/fallback chain defaulting down to various `Gemini` models.
 
 **Justification:**
 We optimized for both speed and cost-effectiveness by choosing a fast, right-sized open-source model through the Groq LPU engine for instantaneous logic routing. However, third-party APIs are inherently unstable (rate limits, internal 500s). To ensure a crash-proof, highly available system, we built a fallback matrix. If Groq times out or fails to parse, the system catches the exception gracefully and seamlessly redirects the payload to Google's Gemini models without the user ever noticing the downtime.
@@ -31,3 +31,9 @@ Security is paramount. Using `exec()` or `eval()` on LLM-generated code opens se
 
 **Justification:**
 Data integrity cannot be fully entrusted to an autonomous agent. Enforcing a mandatory preview and user handshake prevents catastrophic data wiping caused by a hallucinated entity ID or a misunderstood natural language prompt.
+
+## 6. Context Window & Memory Management (Rate Limit Prevention)
+**Decision:** We implemented a strict conversation history truncation mechanism, keeping only the last 6 user-assistant turns (12 messages total) in the context window.
+
+**Justification:**
+Free-tier LLM APIs (like Groq) have strict Tokens Per Minute (TPM) limits. Passing the entire chat history alongside the system prompt (which contains the full Excel schema and tool catalog) quickly causes `413 Payload Too Large` or `429 Quota Exceeded` errors. By sliding the context window, we maintain sufficient conversational memory for follow-up questions while guaranteeing the payload remains lightweight, fast, and within the free-tier quota limits.
